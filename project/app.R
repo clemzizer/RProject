@@ -17,24 +17,15 @@ library(zoo)
 library(xts)
 
 
-#logs<-read.csv('logs.csv', sep=';')
-
-
-#add colors
-#turn into percentages
-#Cold Turkey ???
-#Order by pas trouvé
-# à chaque fois il y a une version de la donnée avec __1 ??? qu'est ce que c'est ? pas les meme chiffres df$Cigarette.after.meal__1
-
-getwd()
-setwd("/Users/cvoisin/Repos/Rproject/rproject/project")
-excel <- read_excel("./surveydataece.xlsx", 1)
-df <- data.frame(excel)
-head(df)
-
-csv <- read.csv("./logs.csv", sep = ";")
-df_logs <- data.frame(csv)
-head(df_logs)
+# getwd()
+# setwd("/Users/cvoisin/Repos/Rproject/rproject/project")
+# excel <- read_excel("./surveydataece.xlsx", 1)
+# df <- data.frame(excel)
+# head(df)
+# 
+# csv <- read.csv("./logs.csv", sep = ";")
+# df_logs <- data.frame(csv)
+# head(df_logs)
 
 
 
@@ -60,18 +51,24 @@ ui <- fluidPage(
                  h3("Average amount of money saved"),
                  verbatimTextOutput("mean_money_saved")
                ),
-               
                tabPanel(
                  "Classic",
                  h4("Mean and std of cigarette consumption per weekday"),
-                 plotOutput("mean_cigs"),
-                 h4("Average progress of all users "),
+                 verbatimTextOutput("all_mean_std"),
+                 h4("Average progress of all users"),
+                 verbatimTextOutput("mean_progress"),
                  h4("Cigarettes per weekday per time slots"),
-                 h4("Average rate of progress of all users")
+                 plotOutput("all_cigarettes_weekday"),
+                 h4("Average rate of progress of all users"),
+                 plotOutput("mean_progress_rate")
                ),
-               tabPanel("Engagement",
-                        h4("Engagement over all period"))
-             )),
+               tabPanel(
+                 "Engagement",
+                 h4("Engagement over all period"),
+                 plotOutput("all_engagement")
+               )
+             )
+             ),
     tabPanel(
       'Single user mode',
       selectInput("user_name", "Please choose a user:" , choices = NULL),
@@ -106,12 +103,17 @@ ui <- fluidPage(
         tabPanel(
           "Classic",
           h4("Cigarette consumption per weekday"),
-          plotOutput("consumed_weekends"),
-          h4("Cigarette consumption per weekend day"),
           plotOutput("consumed_weekdays"),
+          h4("Cigarette consumption per weekend day"),
+          plotOutput("consumed_weekends"),
           h4("Cigarettes consumption in last seven days"),
           plotOutput("last_7"),
-          h4("Mean and std cigarette consumption per weekday"),
+          h4("Mean and std cigarette consumption per weekday v1"),
+          plotOutput("mean_std_v1"),
+          h4("Mean and std cigarette consumption per weekday v2"),
+          verbatimTextOutput("mean_std_v2"),
+          h4("Mean and std cigarette consumption per weekday v3"),
+          verbatimTextOutput("mean_std_v3"),
           h4("Progress over all period"),
           plotOutput("weekly_progress"),
           h4("Rate of progress"),
@@ -133,7 +135,15 @@ ui <- fluidPage(
         tabPanel(
           "All days",
           h4('Cigarettes consumption over all period'),
-          h4('Mode usage over all period')
+          plotOutput("daily_usage"),
+          h4('Mode usage over all period'),
+          plotOutput("mode_usage_behaviour"),
+          plotOutput("mode_usage_ontime"),
+          plotOutput("mode_usage_cheated"),
+          plotOutput("mode_usage_skipped"),
+          plotOutput("mode_usage_autoskipped"),
+          plotOutput("mode_usage_friend"),
+          plotOutput("mode_usage_snoozed")
         )
         
       )
@@ -331,7 +341,8 @@ server <- function(input, output, session) {
     index <- endpoints(newdata_engaged, on = "weeks")
     weekly_engagement <- period.apply(newdata_engaged, index, f)
     eng<-mean(weekly_engagement)
-    print("Overall engagement: ", eng)
+    #print("Overall engagement: ", eng)
+    print(paste("Overall engagement: ", eng))
   })
   #Best Rate of Progress
   output$max_progress<-renderPrint({
@@ -579,7 +590,89 @@ server <- function(input, output, session) {
       plot.xts(tail(daily_sum$Smoked, n = 7), type = "h")
     }
   })
- 
+  #Literall mean of the 3 per day
+  output$mean_std_v1 <- renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      ret<-mean(nrow(day[day$Type=="Cheated"]),nrow(day[day$Type=="On time"]),nrow(day[day$Type=="Behaviour"]))
+      return (ret)
+    }
+    weekdays <-
+      which(
+        .indexwday(newdata_xts_smoked) == 1 |
+          .indexwday(newdata_xts_smoked) == 2 |
+          .indexwday(newdata_xts_smoked) == 3 |
+          .indexwday(newdata_xts_smoked) == 4 |
+          .indexwday(newdata_xts_smoked) == 5
+      )
+    smoked_weekdays <- newdata_xts[weekdays]
+    index <- endpoints(smoked_weekdays, on = "days")
+    mean_weekday <- period.apply(smoked_weekdays, index, f)
+    plot.xts(mean_weekday)
+    #print(paste("Mean:", round(mean(daily_consumption), digits=2),"Std:",round(sd(daily_consumption), digits = 2)))
+  })
+  #Literal interpretation this time mean of mean and std of mean
+  output$mean_std_v2<-renderPrint({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      ret<-mean(nrow(day[day$Type=="Cheated"]),nrow(day[day$Type=="On time"]),nrow(day[day$Type=="Behaviour"]))
+      return (ret)
+    }
+    weekdays <-
+      which(
+        .indexwday(newdata_xts_smoked) == 1 |
+          .indexwday(newdata_xts_smoked) == 2 |
+          .indexwday(newdata_xts_smoked) == 3 |
+          .indexwday(newdata_xts_smoked) == 4 |
+          .indexwday(newdata_xts_smoked) == 5
+      )
+    smoked_weekdays <- newdata_xts[weekdays]
+    index <- endpoints(smoked_weekdays, on = "days")
+    mean_weekday <- period.apply(smoked_weekdays, index, f)
+    print(paste("Mean:", round(mean(mean_weekday), digits=2),"Std:",round(sd(mean_weekday), digits = 2)))
+  })
+  #Simple mean and std of all 
+  output$mean_std_v3<-renderPrint({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      ret<-nrow(day)
+      return (ret)
+    }
+    weekdays <-
+      which(
+        .indexwday(newdata_xts_smoked) == 1 |
+          .indexwday(newdata_xts_smoked) == 2 |
+          .indexwday(newdata_xts_smoked) == 3 |
+          .indexwday(newdata_xts_smoked) == 4 |
+          .indexwday(newdata_xts_smoked) == 5
+      )
+    smoked_weekdays <- newdata_xts[weekdays]
+    index <- endpoints(smoked_weekdays, on = "days")
+    mean_weekday <- period.apply(smoked_weekdays, index, f)
+    plot.xts(mean_weekday)
+    print(paste("Mean:", round(mean(mean_weekday), digits=2),"Std:",round(sd(mean_weekday), digits = 2)))
+  })
   #Weekly progress
   output$weekly_progress <- renderPlot({
     progress_1 <- WeeklyProgressData()
@@ -632,10 +725,6 @@ server <- function(input, output, session) {
   #   daily_consumption <- period.apply(newdata_xts_smoked, index, f)
   # })
   ##################### Engagement tab ##############################
-  myEngagementDaya<-reactive({
-    
-    
-  })
   output$daily_engagement<- renderPlot({
     df_logs <- myLogsData()
     newdata <- subset(df_logs, df_logs$User == input$user_name)
@@ -666,6 +755,137 @@ server <- function(input, output, session) {
     weekly_engagement <- period.apply(newdata_engaged, index, f)
     plot.xts(weekly_engagement, type="h")
   })
+  output$daily_usage<- renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    index <- endpoints(smoked_weekdays, on = "days")
+    daily_consumption <- period.apply(smoked_weekdays, index, f)
+    plot.xts(daily_consumption)
+  })
+  output$mode_usage_behaviour<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Behaviour"]
+    index <- endpoints(type, on = "days")
+    Behaviour <- period.apply(type, index, f)
+    plot.xts(Behaviour)
+  })
+  output$mode_usage_ontime<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="On time"]
+    index <- endpoints(type, on = "days")
+    OnTime <- period.apply(type, index, f)
+    plot.xts(OnTime)
+  })
+  output$mode_usage_cheated<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Cheated"]
+    index <- endpoints(type, on = "days")
+    Cheated <- period.apply(type, index, f)
+    plot.xts(Cheated)
+  })
+  output$mode_usage_skipped<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Skipped"]
+    index <- endpoints(type, on = "days")
+    Skipped <- period.apply(type, index, f)
+    plot.xts(Skipped)
+  })
+  output$mode_usage_autoskipped<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Auto skipped"]
+    index <- endpoints(type, on = "days")
+    Autoskipped <- period.apply(type, index, f)
+    plot.xts(Autoskipped)
+  })
+  output$mode_usage_snoozed<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Snoozed"]
+    index <- endpoints(type, on = "days")
+    Snoozed <- period.apply(type, index, f)
+    plot.xts(Snoozed)
+  })
+  output$mode_usage_friend<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- subset(df_logs, df_logs$User == input$user_name)
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    f <- function(day) {
+      return (nrow(day))
+    }
+    smoked_weekdays <- newdata_xts
+    type<-newdata_xts[newdata_xts$Type=="Friend"]
+    index <- endpoints(type, on = "days")
+    Friend <- period.apply(type, index, f)
+    plot.xts(Friend)
+  })
+  
+  
   
   ######################################################################################################################################################
   #################################################################### All users #######################################################################
@@ -679,15 +899,13 @@ server <- function(input, output, session) {
       as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
     #Keeping only smoked
     newdata_xts_smoked <-
-      newdata_xts[newdata_xts$Type == "Behaviour" |
-                    newdata_xts$Type == "On time" |
-                    newdata_xts$Type == "Cheated"]
+      newdata_xts[newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
     #Adjusting periodicity to week
     newdata_weeks <- split(newdata_xts_smoked$Type, f = "weeks")
     #Number of cigs smoked in behaviour week
     n <- nrow(newdata_xts[newdata_xts$Type == "Behaviour"])
     #Removing behaviour week
-    newdata_normal_weeks <- newdata_weeks[-1]
+    newdata_normal_weeks <- newdata_weeks
     f <- function(week) {
       return (n - nrow(week))
     }
@@ -710,49 +928,133 @@ server <- function(input, output, session) {
   output$mean_cigarettes_saved <- renderPrint({
     weekly_saving <- myUsefulData()
     fsum <- cumsum(weekly_saving[, 1])
-    print(paste(tail(fsum, n = 1) / 36, "Cigarettes saved"))
+    print(paste(round(tail(fsum, n = 1) / 36, digits=2), "Cigarettes saved"))
   })
   output$mean_money_saved <- renderPrint({
     weekly_saving <- myUsefulData()
     fsum <- cumsum(weekly_saving[, 1])
-    print(paste(tail(fsum, n = 1) / 36, "€ saved"))
+    print(paste(round(tail(fsum, n = 1) / 36, digits=2), "€ saved"))
   })
   ##################### Classic tab ##############################
   #Mean and std of cigarette consumption per weekday
+  output$all_mean_std <- renderPrint({
+    df_logs <- myLogsData()
+    newdata <- df_logs
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      return (nrow(day))
+    }
+    weekdays <-
+      which(
+        .indexwday(newdata_xts_smoked) == 1 |
+          .indexwday(newdata_xts_smoked) == 2 |
+          .indexwday(newdata_xts_smoked) == 3 |
+          .indexwday(newdata_xts_smoked) == 4 |
+          .indexwday(newdata_xts_smoked) == 5
+      )
+    smoked_weekdays <- newdata_xts[weekdays]
+    index <- endpoints(smoked_weekdays, on = "days")
+    daily_consumption <- period.apply(smoked_weekdays, index, f)
+   
+    print(paste("Mean:", round(mean(daily_consumption), digits =2),"Standard deviation:",round(sd(daily_consumption), digits=2)))
+    })
+  FullProgress<-reactive({
+    df_logs <- myLogsData()
+    newdata <- df_logs
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(week) {
+      return (nrow(week))
+    }
+    index <- endpoints(newdata_xts_smoked, on = "weeks")
+    weekly_progress <- period.apply(newdata_xts_smoked, index, f)
+    f2 <- function(week) {
+      avg <- mean(week[1, 1], week[2, 1], week[1, 1])
+      return ((avg - week[4, 1]) / avg)
+    }
+    n <- nrow(newdata_xts[newdata_xts$Type == "Behaviour"])
+    f3 <- function(week) {
+      return ((n - week) / n)
+    }
+    #Progress week 1 to 3
+    progress_2 <- lapply(weekly_progress[1:3, 1], f3)
+    progress_2 <- do.call(rbind, progress_2)
+    #Progress week 3 and on
+    progress_1 <- rollapply(weekly_progress[, 1], width = 4, f2)
+    progress_1[1:3, 1] <- progress_2[1:3, 1]
+    return(progress_1)
+  })
+  
   #Average progress of all users 
-  #Cigarettes per weekday per time slots
+  output$mean_progress<-renderPrint({
+    progress_1<-FullProgress()
+    print(paste("Mean progress for all users:", mean(progress_1)))
+  })
   #Average rate of progress of all users 
+  output$mean_progress_rate<-renderPlot({
+    progress_1<-FullProgress()
+    f4 <- function(week) {
+      if (week[2, 1] == 0) {
+        res <- (as.numeric(week[3, 1]) - as.numeric(week[1, 1])) / abs(week[2, 1])
+      }
+      res <-
+        ((as.numeric(week[3, 1]) - as.numeric(week[2, 1])) / abs(week[2, 1]))
+      return (res)
+    }
+    rate_progress <- rollapply(progress_1[, 1], width = 4, f4)
+    plot.xts(rate_progress)
+  })
+  #Cigarettes per weekday per time slots
+  output$all_cigarettes_weekday<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- df_logs
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-
+      as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only smoked
+    newdata_xts_smoked <-
+      newdata_xts[newdata_xts$Type == "Behaviour" | newdata_xts$Type == "On time" | newdata_xts$Type == "Cheated"]
+    f <- function(day) {
+      return (nrow(day))
+    }
+    weekdays <-
+      which(
+        .indexwday(newdata_xts_smoked) == 1 |
+          .indexwday(newdata_xts_smoked) == 2 |
+          .indexwday(newdata_xts_smoked) == 3 |
+          .indexwday(newdata_xts_smoked) == 4 |
+          .indexwday(newdata_xts_smoked) == 5
+      )
+    smoked_weekdays <- newdata_xts[weekdays]
+    index <- endpoints(smoked_weekdays, on = "days")
+    daily_consumption <- period.apply(smoked_weekdays, index, f)
+    plot.xts(daily_consumption)
+  })
   ##################### Engagement tab ##############################
   #Engagement over all period
-  
-  
-  
+  output$all_engagement<-renderPlot({
+    df_logs <- myLogsData()
+    newdata <- df_logs
+    newdata$Time <- as.Date(newdata$Time, format = "%d/%m/%Y %H:%M")
+    newdata_xts <-as.xts(newdata[, c("User", "Type", "Latitude", "Longitude")], order.by = newdata$Time)
+    #Keeping only engagement data
+    newdata_engaged <-
+      newdata_xts[newdata_xts$Type == "Skipped" | newdata_xts$Type == "On time" | newdata_xts$Type == "Auto skipped" | newdata_xts$Type == "Snoozed"]
+    f<-function(day){
+      1-(nrow(day[day$Type=="Auto skipped"])/nrow(day))
+    }
+    index <- endpoints(newdata_engaged, on = "weeks")
+    weekly_engagement <- period.apply(newdata_engaged, index, f)
+    plot.xts(weekly_engagement, type="h")
+  })
 }
-
 shinyApp(ui = ui, server = server)
-# slices <-
-#   c(
-#     table(df$Cigarette.after.meal),
-#     table(df$Cigarette.with.a.group.of.friends...colleagues),
-#     table(df$Cigarette.with.alcohol),
-#   )
-# #order by pas trouvé
-# # à chaque fois il y a une version de la donnée avec __1 ??? qu'est ce que c'est ? pas les meme chiffres df$Cigarette.after.meal__1
-# pie(slices)
-
-#pie(table(df$How.many.cigarettes.do.you.smoke.per.day[1:35]))
-#nrow and ncol return the number of rows or columns present in x. NCOL and NROW do the same treating a vector as 1-column
-#barplot(table(df$'Gender'))
-#mean(df$Age)
-
-# barplot(
-#   table(df$Education),
-#   names.arg = c("Graduate degree", "High school", " Undergraduate")
-# )
-
-# counts <-
-#   table(df$Are.you.satisfied.with.the.progress.achieved.so.far.,
-#         df$Gender)
-# barplot(counts)
-
-# Run the application
